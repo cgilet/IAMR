@@ -1,5 +1,6 @@
 #include <iamr_mol.H>
 #include <iamr_constants.H>
+#include <iamr_advection.H>
 #ifdef AMREX_USE_EB
 #include <AMReX_MultiCutFab.H>
 #include <iamr_redistribution.H>
@@ -152,10 +153,6 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
 	    FArrayBox tmpfab(tmpbox, tmpcomp);
 	    Elixir eli = tmpfab.elixir();
 
-	    D_TERM( Array4<Real> fxtmp = tmpfab.array(0);,
-		    Array4<Real> fytmp = tmpfab.array(ncomp);,
-		    Array4<Real> fztmp = tmpfab.array(ncomp*2););
-
 #ifdef AMREX_USE_EB
             if (!regular)
             {
@@ -163,7 +160,14 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                         Array4<Real const> fcy = ebfactory.getFaceCent()[1]->const_array(mfi);,
                         Array4<Real const> fcz = ebfactory.getFaceCent()[2]->const_array(mfi););
 
+
+                D_TERM( auto apx = ebfactory.getAreaFrac()[0]->const_array(mfi);,
+                        auto apy = ebfactory.getAreaFrac()[1]->const_array(mfi);,
+                        auto apz = ebfactory.getAreaFrac()[2]->const_array(mfi); );
+
                 Array4<Real const> ccc = ebfactory.getCentroid().const_array(mfi);
+
+                auto vfrac = ebfactory.getVolFrac().const_array(mfi);
 
                 // Compute edge state if needed
                 if (!known_edgestate)
@@ -176,8 +180,9 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                EB_ComputeFluxes(gbx, D_DECL(fxtmp,fytmp,fztmp), D_DECL(u,v,w),
-				 D_DECL(xed,yed,zed), ncomp, flag );
+                Advection::EB_ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(u,v,w),
+                                            D_DECL(xed,yed,zed), D_DECL(apx,apy,apz),
+                                            geom, ncomp, flag );
 
                 //
                 // Compute divergence and redistribute
@@ -185,23 +190,13 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
 		// div at ncomp*3 to make space for the 3 redistribute temporaries
                 Array4<Real> divtmp_arr = tmpfab.array(ncomp*3);
 
-                auto vfrac = ebfactory.getVolFrac().const_array(mfi);
 
-                D_TERM( auto apx = ebfactory.getAreaFrac()[0]->const_array(mfi);,
-                        auto apy = ebfactory.getAreaFrac()[1]->const_array(mfi);,
-                        auto apz = ebfactory.getAreaFrac()[2]->const_array(mfi); );
 
                 // Compute conservative divergence
                 // Redistribute needs 2 ghost cells in div
 	        Box g2bx = amrex::grow(bx,2);
-                EB_ComputeDivergence(g2bx, divtmp_arr, D_DECL(fxtmp,fytmp,fztmp), ncomp,
-				     geom, flag, vfrac, D_DECL(apx,apy,apz));
-
-                // Weight fluxes by area
-		// Do this before Redistribute so that we can reuse the tmp space
-                EB_AreaWeightFluxes(D_DECL(xbx, ybx, zbx), D_DECL(fx,fy,fz),
-				    D_DECL(fxtmp,fytmp,fztmp), D_DECL(apx,apy,apz),
-				    ncomp, geom.CellSize());
+                Advection::EB_ComputeDivergence(g2bx, divtmp_arr, D_DECL(fx,fy,fz), vfrac,
+                                                ncomp, geom );
 
                 // Redistribute
 		Array4<Real> scratch = tmpfab.array(0);
@@ -227,16 +222,14 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                ComputeFluxes(gbx, D_DECL(fxtmp,fytmp,fztmp), D_DECL(u,v,w),
-			      D_DECL(xed,yed,zed), ncomp );
+                Advection::ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(u,v,w),
+                                         D_DECL(xed,yed,zed), geom, ncomp );
 
                 // Compute divergence
-                ComputeDivergence(bx, aofs.array(mfi, aofs_comp), D_DECL(fxtmp,fytmp,fztmp),
-				  ncomp, geom);
-
-                // Weight fluxes by area and copy them  to output
-                AreaWeightFluxes(D_DECL(xbx, ybx, zbx), D_DECL(fx,fy,fz),
-				 D_DECL(fxtmp,fytmp,fztmp), ncomp, geom.CellSize());
+                std::vector<int>  iconserv(ncomp,1); // for now only conservative
+                Advection::ComputeDivergence(bx, aofs.array(mfi, aofs_comp), D_DECL(fx,fy,fz),
+                                             D_DECL( xed, yed, zed ), D_DECL( u, v, w ),
+                                             ncomp, geom, iconserv.data());
 
             }
         }
@@ -287,6 +280,9 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
     D_TERM( AMREX_ALWAYS_ASSERT(xfluxes.nGrow() == xedge.nGrow());,
             AMREX_ALWAYS_ASSERT(yfluxes.nGrow() == yedge.nGrow());,
             AMREX_ALWAYS_ASSERT(zfluxes.nGrow() == zedge.nGrow()););
+
+    // Sync is always conservative
+    std::vector<int>  iconserv(ncomp,1); // Sync is always conservative
 
 #ifdef AMREX_USE_EB
     AMREX_ALWAYS_ASSERT(state.hasEBFabFactory());
@@ -381,10 +377,6 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
 	    FArrayBox tmpfab(tmpbox, tmpcomp);
 	    Elixir eli = tmpfab.elixir();
 
-	    D_TERM( Array4<Real> fxtmp = tmpfab.array(0);,
-		    Array4<Real> fytmp = tmpfab.array(ncomp);,
-		    Array4<Real> fztmp = tmpfab.array(ncomp*2););
-
 #ifdef AMREX_USE_EB
             if (!regular)
             {
@@ -393,6 +385,12 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                         Array4<Real const> fcz = ebfactory.getFaceCent()[2]->const_array(mfi););
 
                 Array4<Real const> ccc = ebfactory.getCentroid().const_array(mfi);
+
+                auto vfrac = ebfactory.getVolFrac().const_array(mfi);
+
+                D_TERM( auto apx = ebfactory.getAreaFrac()[0]->const_array(mfi);,
+                        auto apy = ebfactory.getAreaFrac()[1]->const_array(mfi);,
+                        auto apz = ebfactory.getAreaFrac()[2]->const_array(mfi); );
 
                 // Compute edge state if needed
                 if (!known_edgestate)
@@ -409,8 +407,9 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                EB_ComputeFluxes(gbx, D_DECL(fxtmp,fytmp,fztmp), D_DECL(uc,vc,wc),
-				 D_DECL(xed,yed,zed), ncomp, flag );
+                Advection::EB_ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
+                                            D_DECL(xed,yed,zed), D_DECL(apx,apy,apz),
+                                            geom, ncomp, flag );
 
                 //
                 // Compute divergence and redistribute
@@ -419,21 +418,11 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 Array4<Real> divtmp_arr = tmpfab.array(ncomp*3);
                 Array4<Real> divtmp_redist_arr = tmpfab.array(ncomp*4);
 
-                auto vfrac = ebfactory.getVolFrac().const_array(mfi);
-
-                D_TERM( auto apx = ebfactory.getAreaFrac()[0]->const_array(mfi);,
-                        auto apy = ebfactory.getAreaFrac()[1]->const_array(mfi);,
-                        auto apz = ebfactory.getAreaFrac()[2]->const_array(mfi); );
-
                 // Compute conservative divergence
-                EB_ComputeDivergence(gbx, divtmp_arr, D_DECL(fxtmp,fytmp,fztmp), ncomp,
-				     geom, flag, vfrac, D_DECL(apx,apy,apz));
-
-		// Weight fluxes by area
-		// Do this before Redistribute so that we can reuse the tmp space
-                EB_AreaWeightFluxes(D_DECL(xbx, ybx, zbx), D_DECL(fx,fy,fz),
-				    D_DECL(fxtmp,fytmp,fztmp), D_DECL(apx,apy,apz),
-				    ncomp, geom.CellSize());
+                std::vector<int> iconserv(ncomp,1);
+                Box g2bx = amrex::grow(bx,2);
+                Advection::EB_ComputeDivergence(g2bx, divtmp_arr, AMREX_D_DECL(fx,fy,fz), vfrac,
+                                                ncomp, geom );
 
                 // Redistribute
 		Array4<Real> scratch = tmpfab.array(0);
@@ -472,12 +461,14 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                ComputeFluxes(bx, D_DECL(fxtmp,fytmp,fztmp), D_DECL(uc,vc,wc),
-			      D_DECL(xed,yed,zed), ncomp );
+                Advection::ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
+                                         D_DECL(xed,yed,zed), geom, ncomp );
 
                 // Compute divergence
                 Array4<Real> divtmp_arr = tmpfab.array(ncomp*AMREX_SPACEDIM);
-                ComputeDivergence(bx, divtmp_arr, D_DECL(fxtmp,fytmp,fztmp), ncomp, geom);
+                Advection::ComputeDivergence(bx, divtmp_arr, D_DECL(fx,fy,fz),
+                                             D_DECL( xed, yed, zed ), D_DECL( uc, vc, wc ),
+                                             ncomp, geom, iconserv.data());
 
                 // Sum contribution to sync aofs
                 auto const& aofs_arr = aofs.array(mfi, aofs_comp);
@@ -487,332 +478,7 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 {
                     aofs_arr( i, j, k, n ) += divtmp_arr( i, j, k, n );
                 });
-
-                // Weight fluxes by area and copy them  to output
-                AreaWeightFluxes(D_DECL(xbx, ybx, zbx), D_DECL(fx,fy,fz),
-				 D_DECL(fxtmp,fytmp,fztmp), ncomp, geom.CellSize());
-
             }
         }
     }
 }
-
-
-void
-MOL::ComputeFluxes ( Box const& bx,
-                     D_DECL( Array4<Real> const& fx,
-                             Array4<Real> const& fy,
-                             Array4<Real> const& fz),
-                     D_DECL( Array4<Real const> const& umac,
-                             Array4<Real const> const& vmac,
-                             Array4<Real const> const& wmac),
-                     D_DECL( Array4<Real const> const& xedge,
-                             Array4<Real const> const& yedge,
-                             Array4<Real const> const& zedge),
-                     int ncomp )
-{
-    //
-    //  X flux
-    //
-    const Box& xbx = amrex::surroundingNodes(bx,0);
-
-    amrex::ParallelFor(xbx, ncomp, [fx, umac, xedge]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fx(i,j,k,n) = xedge(i,j,k,n) * umac(i,j,k);
-    });
-
-    //
-    //  y flux
-    //
-    const Box& ybx = amrex::surroundingNodes(bx,1);
-
-    amrex::ParallelFor(ybx, ncomp, [fy, vmac, yedge]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fy(i,j,k,n) = yedge(i,j,k,n) * vmac(i,j,k);
-    });
-
-#if (AMREX_SPACEDIM==3)
-    //
-    //  z flux
-    //
-    const Box& zbx = amrex::surroundingNodes(bx,2);
-
-    amrex::ParallelFor(zbx, ncomp, [fz, wmac, zedge]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fz(i,j,k,n) = zedge(i,j,k,n) * wmac(i,j,k);
-    });
-
-#endif
-
-}
-
-
-void
-MOL::ComputeDivergence ( Box const& bx,
-                         Array4<Real> const& div,
-                         D_DECL( Array4<Real const> const& fx,
-                                 Array4<Real const> const& fy,
-                                 Array4<Real const> const& fz),
-                         int ncomp, Geometry const& geom )
-{
-    const auto dxinv = geom.InvCellSizeArray();
-    amrex::ParallelFor(bx, ncomp, [ div, D_DECL(fx,fy,fz), dxinv]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        div(i,j,k,n) = dxinv[0] * (fx(i+1,j,k,n) - fx(i,j,k,n))
-            +          dxinv[1] * (fy(i,j+1,k,n) - fy(i,j,k,n))
-#if (AMREX_SPACEDIM==3)
-            +          dxinv[2] * (fz(i,j,k+1,n) - fz(i,j,k,n))
-#endif
-            ;
-    });
-
-}
-
-
-void
-MOL::AreaWeightFluxes( D_DECL( Box const& xbx,
-			       Box const& ybx,
-			       Box const& zbx),
-                       D_DECL( Array4<Real> const& fx,
-                               Array4<Real> const& fy,
-                               Array4<Real> const& fz),
-		       D_DECL( Array4<Real> const& fxtmp,
-                               Array4<Real> const& fytmp,
-                               Array4<Real> const& fztmp),
-                       int ncomp,
-                       const Real* dx )
-{
-    Array<Real,AMREX_SPACEDIM> area;
-#if ( AMREX_SPACEDIM == 3 )
-    area[0] = dx[1]*dx[2];
-    area[1] = dx[0]*dx[2];
-    area[2] = dx[0]*dx[1];
-#else
-    area[0] = dx[1];
-    area[1] = dx[0];
-#endif
-
-    //
-    //  X flux
-    //
-    amrex::ParallelFor(xbx, ncomp, [fx,fxtmp,area]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fx(i,j,k,n) = fxtmp(i,j,k,n)*area[0];
-    });
-
-    //
-    //  y flux
-    //
-    amrex::ParallelFor(ybx, ncomp, [fy,fytmp,area]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fy(i,j,k,n) = fytmp(i,j,k,n)*area[1];
-    });
-
-#if (AMREX_SPACEDIM==3)
-    //
-    //  z flux
-    //
-    amrex::ParallelFor(zbx, ncomp, [fz,fztmp,area]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fz(i,j,k,n) = fztmp(i,j,k,n)*area[2];
-    });
-
-#endif
-
-}
-
-//
-// ============================  EB-only routines ============================
-//
-
-#ifdef AMREX_USE_EB
-void
-MOL::EB_ComputeFluxes ( Box const& bx,
-                        D_DECL( Array4<Real> const& fx,
-                                Array4<Real> const& fy,
-                                Array4<Real> const& fz),
-                        D_DECL( Array4<Real const> const& umac,
-                                Array4<Real const> const& vmac,
-                                Array4<Real const> const& wmac),
-                        D_DECL( Array4<Real const> const& xedge,
-                                Array4<Real const> const& yedge,
-                                Array4<Real const> const& zedge),
-                        int ncomp,
-                        Array4<EBCellFlag const> const& flag)
-{
-    //
-    //  X flux
-    //
-    const Box& xbx = amrex::surroundingNodes(bx,0);
-
-    amrex::ParallelFor(xbx, ncomp, [fx, umac, xedge, flag]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if (flag(i,j,k).isConnected(-1,0,0))
-        {
-            fx(i,j,k,n) = xedge(i,j,k,n) * umac(i,j,k);
-        }
-        else
-        {
-            fx(i,j,k,n) = 0.0;
-        }
-    });
-
-    //
-    //  y flux
-    //
-    const Box& ybx = amrex::surroundingNodes(bx,1);
-
-    amrex::ParallelFor(ybx, ncomp, [fy, vmac, yedge, flag]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if (flag(i,j,k).isConnected(0,-1,0))
-        {
-            fy(i,j,k,n) = yedge(i,j,k,n) * vmac(i,j,k);
-        }
-        else
-        {
-            fy(i,j,k,n) = 0.0;
-        }
-    });
-
-#if (AMREX_SPACEDIM == 3)
-
-    //
-    //  z flux
-    //
-    const Box& zbx = amrex::surroundingNodes(bx,2);
-
-    amrex::ParallelFor(zbx, ncomp, [fz, wmac, zedge, flag]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if (flag(i,j,k).isConnected(0,0,-1))
-        {
-            fz(i,j,k,n) = zedge(i,j,k,n) * wmac(i,j,k);
-        }
-        else
-        {
-            fz(i,j,k,n) = 0.0;
-        }
-    });
-
-#endif
-
-}
-
-
-void
-MOL::EB_ComputeDivergence ( Box const& bx,
-                            Array4<Real> const& div,
-                            D_DECL( Array4<Real const> const& fx,
-                                    Array4<Real const> const& fy,
-                                    Array4<Real const> const& fz),
-                            int ncomp, Geometry const& geom,
-                            Array4<EBCellFlag const> const& flag,
-                            Array4<Real const> const& vfrac,
-                            D_DECL( Array4<Real const> const& apx,
-                                    Array4<Real const> const& apy,
-                                    Array4<Real const> const& apz ) )
-{
-    const auto dxinv = geom.InvCellSizeArray();
-    const auto dbox  = geom.growPeriodicDomain(2);
-    amrex::ParallelFor(bx, ncomp, [ div, D_DECL(fx,fy,fz), dxinv, dbox, flag, vfrac, D_DECL(apx,apy,apz) ]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if (!dbox.contains(IntVect(D_DECL(i,j,k))) or flag(i,j,k).isCovered())
-        {
-            div(i,j,k,n) = 0.0;
-        }
-        else if (flag(i,j,k).isRegular())
-        {
-            div(i,j,k,n) = -( dxinv[0] * (fx(i+1,j,k,n) - fx(i,j,k,n))
-                +             dxinv[1] * (fy(i,j+1,k,n) - fy(i,j,k,n))
-#if (AMREX_SPACEDIM==3)
-                +             dxinv[2] * (fz(i,j,k+1,n) - fz(i,j,k,n))
-#endif
-                );
-        }
-        else
-        {
-            div(i,j,k,n) = - (1.0/vfrac(i,j,k)) *
-                (       dxinv[0] * (apx(i+1,j,k)*fx(i+1,j,k,n) - apx(i,j,k)*fx(i,j,k,n))
-                      + dxinv[1] * (apy(i,j+1,k)*fy(i,j+1,k,n) - apy(i,j,k)*fy(i,j,k,n))
-#if (AMREX_SPACEDIM==3)
-                      + dxinv[2] * (apz(i,j,k+1)*fz(i,j,k+1,n) - apz(i,j,k)*fz(i,j,k,n))
-#endif
-                    );
-
-        }
-    });
-
-}
-
-void
-MOL::EB_AreaWeightFluxes ( D_DECL( Box const& xbx,
-				   Box const& ybx,
-				   Box const& zbx),
-                           D_DECL( Array4<Real> const& fx,
-                                   Array4<Real> const& fy,
-                                   Array4<Real> const& fz),
-                           D_DECL( Array4<Real> const& fxtmp,
-                                   Array4<Real> const& fytmp,
-                                   Array4<Real> const& fztmp),
-                           D_DECL( Array4<Real const> const& apx,
-                                   Array4<Real const> const& apy,
-                                   Array4<Real const> const& apz ),
-                           int ncomp,
-                           const Real* dx )
-{
-    Array<Real,AMREX_SPACEDIM> area;
-#if ( AMREX_SPACEDIM == 3 )
-    area[0] = dx[1]*dx[2];
-    area[1] = dx[0]*dx[2];
-    area[2] = dx[0]*dx[1];
-#else
-    area[0] = dx[1];
-    area[1] = dx[0];
-#endif
-
-    //
-    //  X flux
-    //
-    amrex::ParallelFor(xbx, ncomp, [fx,fxtmp,area,apx]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fx(i,j,k,n) = fxtmp(i,j,k,n)*area[0]*apx(i,j,k);
-    });
-
-    //
-    //  y flux
-    //
-    amrex::ParallelFor(ybx, ncomp, [fy,fytmp,area,apy]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fy(i,j,k,n) = fytmp(i,j,k,n)*area[1]*apy(i,j,k);
-    });
-
-#if (AMREX_SPACEDIM==3)
-    //
-    //  z flux
-    //
-    amrex::ParallelFor(zbx, ncomp, [fz,fztmp,area,apz]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        fz(i,j,k,n) = fztmp(i,j,k,n)*area[2]*apz(i,j,k);
-    });
-
-#endif
-
-}
-
-
-
-
-#endif

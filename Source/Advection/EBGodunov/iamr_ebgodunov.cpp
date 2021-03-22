@@ -1,5 +1,6 @@
 #include <iamr_ebgodunov.H>
 #include <iamr_godunov.H>
+#include <iamr_advection.H>
 #include <iamr_redistribution.H>
 // #include <NS_util.H>
 
@@ -86,17 +87,17 @@ EBGodunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                                            is_velocity );
             }
 
-            Godunov::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
-                                    AMREX_D_DECL( u, v, w ),
-                                    AMREX_D_DECL( xed, yed, zed ),
-                                    geom, ncomp );
+            Advection::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
+                                      AMREX_D_DECL( u, v, w ),
+                                      AMREX_D_DECL( xed, yed, zed ),
+                                      geom, ncomp );
 
-            Godunov::ComputeDivergence( bx,
-                                        aofs.array(mfi,aofs_comp),
-                                        AMREX_D_DECL( fx, fy, fz ),
-                                        AMREX_D_DECL( xed, yed, zed ),
-                                        AMREX_D_DECL( u, v, w ),
-                                        ncomp, geom, iconserv.data() );
+            Advection::ComputeDivergence( bx,
+                                          aofs.array(mfi,aofs_comp),
+                                          AMREX_D_DECL( fx, fy, fz ),
+                                          AMREX_D_DECL( xed, yed, zed ),
+                                          AMREX_D_DECL( u, v, w ),
+                                          ncomp, geom, iconserv.data() );
         }
         else     // EB Godunov
         {
@@ -154,19 +155,19 @@ EBGodunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                                              is_velocity );
             }
 
-            EBGodunov::ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
-                                      AMREX_D_DECL( u, v, w ),
-                                      AMREX_D_DECL( xed, yed, zed ),
-                                      AMREX_D_DECL( apx, apy, apz ),
-                                      geom, ncomp, flags_arr );
+            Advection::EB_ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
+                                         AMREX_D_DECL( u, v, w ),
+                                         AMREX_D_DECL( xed, yed, zed ),
+                                         AMREX_D_DECL( apx, apy, apz ),
+                                         geom, ncomp, flags_arr );
 
             // div at ncomp*3 to make space for the 3 redistribute temporaries
             Array4<Real> divtmp_arr = tmpfab.array(ncomp*3);
 
-            EBGodunov::ComputeDivergence( gbx,
-                                          divtmp_arr,
-                                          AMREX_D_DECL( fx, fy, fz ),
-                                          vfrac_arr, ncomp, geom );
+            Advection::EB_ComputeDivergence( gbx,
+                                             divtmp_arr,
+                                             AMREX_D_DECL( fx, fy, fz ),
+                                             vfrac_arr, ncomp, geom );
 
             Array4<Real> scratch = tmpfab.array(0);
             Redistribution::Apply( bx, ncomp, aofs.array(mfi, aofs_comp), divtmp_arr,
@@ -214,7 +215,7 @@ EBGodunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncom
                              Vector<BCRec> const& h_bc,
                              BCRec const* d_bc,
                              Geometry const& geom,
-                             Gpu::DeviceVector<int>& iconserv,
+                             Gpu::DeviceVector<int>& to_be_removed, // it was "iconserv",
                              const Real dt,
                              const bool is_velocity,
                              std::string redistribution_type )
@@ -223,8 +224,8 @@ EBGodunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncom
 
     AMREX_ALWAYS_ASSERT(state.hasEBFabFactory());
 
-    for (int n = 0; n < ncomp; n++)
-       if (!iconserv[n]) amrex::Abort("EBGodunov does not support non-conservative form");
+    // Sync is always conservative
+    std::vector<int> iconserv(ncomp,1); // always conservative divergence for sync
 
     auto const& ebfact= dynamic_cast<EBFArrayBoxFactory const&>(state.Factory());
     auto const& flags = ebfact.getMultiEBCellFlagFab();
@@ -279,16 +280,17 @@ EBGodunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncom
                                            is_velocity );
             }
 
-            Godunov::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
-                                    AMREX_D_DECL( uc, vc, wc ),
-                                    AMREX_D_DECL( xed, yed, zed ),
-                                    geom, ncomp );
+            Advection::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
+                                      AMREX_D_DECL( uc, vc, wc ),
+                                      AMREX_D_DECL( xed, yed, zed ),
+                                      geom, ncomp );
 
-
-            Godunov::ComputeSyncDivergence( bx,
-                                            aofs.array(mfi,aofs_comp),
-                                            AMREX_D_DECL( fx, fy, fz ),
-                                            ncomp, geom );
+            Advection::ComputeDivergence( bx,
+                                          aofs.array(mfi,aofs_comp),
+                                          AMREX_D_DECL( fx, fy, fz ),
+                                          AMREX_D_DECL( xed, yed, zed ),
+                                          AMREX_D_DECL( uc, vc, wc ),
+                                          ncomp, geom, iconserv.data() );
         }
         else  // EB Godunov
         {
@@ -335,20 +337,20 @@ EBGodunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncom
                                              is_velocity );
             }
 
-            EBGodunov::ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
-                                      AMREX_D_DECL( uc, vc, wc ),
-                                      AMREX_D_DECL( xed, yed, zed ),
-                                      AMREX_D_DECL( apx, apy, apz ),
-                                      geom, ncomp, flags_arr );
+            Advection::EB_ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
+                                         AMREX_D_DECL( uc, vc, wc ),
+                                         AMREX_D_DECL( xed, yed, zed ),
+                                         AMREX_D_DECL( apx, apy, apz ),
+                                         geom, ncomp, flags_arr );
 
             // div at ncomp*3 to make space for the 3 redistribute temporaries
             Array4<Real> divtmp_arr = tmpfab.array(ncomp*3);
             Array4<Real> divtmp_redist_arr = tmpfab.array(ncomp*4);
 
-            EBGodunov::ComputeDivergence( gbx,
-                                          divtmp_arr,
-                                          AMREX_D_DECL( fx, fy, fz ),
-                                          vfrac_arr, ncomp, geom );
+            Advection::EB_ComputeDivergence( gbx,
+                                             divtmp_arr,
+                                             AMREX_D_DECL( fx, fy, fz ),
+                                             vfrac_arr, ncomp, geom );
 
             Array4<Real> scratch = tmpfab.array(0);
 
@@ -374,126 +376,4 @@ EBGodunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncom
         Gpu::streamSynchronize();  // otherwise we might be using too much memory
     }
 
-}
-
-
-void
-EBGodunov::ComputeFluxes ( Box const& bx,
-                           AMREX_D_DECL( Array4<Real> const& fx,
-                                         Array4<Real> const& fy,
-                                         Array4<Real> const& fz),
-                           AMREX_D_DECL( Array4<Real const> const& umac,
-                                         Array4<Real const> const& vmac,
-                                         Array4<Real const> const& wmac),
-                           AMREX_D_DECL( Array4<Real const> const& xed,
-                                         Array4<Real const> const& yed,
-                                         Array4<Real const> const& zed),
-                           AMREX_D_DECL( Array4<Real const> const& apx,
-                                         Array4<Real const> const& apy,
-                                         Array4<Real const> const& apz),
-                           Geometry const& geom, const int ncomp,
-                           Array4<EBCellFlag const> const& flag)
-{
-
-    const auto dx = geom.CellSizeArray();
-
-    GpuArray<Real,AMREX_SPACEDIM> area;
-
-#if ( AMREX_SPACEDIM == 3 )
-    area[0] = dx[1]*dx[2];
-    area[1] = dx[0]*dx[2];
-    area[2] = dx[0]*dx[1];
-#else
-    area[0] = dx[1];
-    area[1] = dx[0];
-#endif
-
-    //
-    //  X flux
-    //
-    const Box& xbx = amrex::surroundingNodes(bx,0);
-
-    amrex::ParallelFor(xbx, ncomp, [fx, umac, xed, area, apx, flag]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if (flag(i,j,k).isConnected(-1,0,0))
-            fx(i,j,k,n) = xed(i,j,k,n) * umac(i,j,k) * apx(i,j,k) * area[0];
-        else
-            fx(i,j,k,n) = 0.;
-    });
-
-    //
-    //  y flux
-    //
-    const Box& ybx = amrex::surroundingNodes(bx,1);
-
-    amrex::ParallelFor(ybx, ncomp, [fy, vmac, yed, area, apy, flag]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if (flag(i,j,k).isConnected(0,-1,0))
-            fy(i,j,k,n) = yed(i,j,k,n) * vmac(i,j,k) * apy(i,j,k) * area[1];
-        else
-            fy(i,j,k,n) = 0.;
-    });
-
-#if (AMREX_SPACEDIM==3)
-    //
-    //  z flux
-    //
-    const Box& zbx = amrex::surroundingNodes(bx,2);
-
-    amrex::ParallelFor(zbx, ncomp, [fz, wmac, zed, area, apz, flag]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if (flag(i,j,k).isConnected(0,0,-1))
-            fz(i,j,k,n) = zed(i,j,k,n) * wmac(i,j,k) * apz(i,j,k) * area[2];
-        else
-            fz(i,j,k,n) = 0.;
-    });
-#endif
-
-}
-
-
-
-void
-EBGodunov::ComputeDivergence ( Box const& bx,
-                               Array4<Real> const& div,
-                               AMREX_D_DECL( Array4<Real const> const& fx,
-                                             Array4<Real const> const& fy,
-                                             Array4<Real const> const& fz),
-                               Array4<Real const> const& vfrac,
-                               const int ncomp, Geometry const& geom )
-{
-
-    const auto dxinv = geom.InvCellSizeArray();
-
-#if (AMREX_SPACEDIM==3)
-    Real qvol = dxinv[0] * dxinv[1] * dxinv[2];
-#else
-    Real qvol = dxinv[0] * dxinv[1];
-#endif
-
-    // Return -div because reinitialization algo operates on it
-    // instead of operatin on div
-    amrex::ParallelFor(bx, ncomp,[=]
-    AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
-    {
-        if ( vfrac(i,j,k) > 0.)
-        {
-            div(i,j,k,n) =  - qvol/vfrac(i,j,k) *
-                (
-                         fx(i+1,j,k,n) -  fx(i,j,k,n)
-                       + fy(i,j+1,k,n) -  fy(i,j,k,n)
-#if (AMREX_SPACEDIM==3)
-                       + fz(i,j,k+1,n) -  fz(i,j,k,n)
-#endif
-                );
-        }
-        else
-        {
-            div(i,j,k,n) = 0.0;
-        }
-
-    });
 }

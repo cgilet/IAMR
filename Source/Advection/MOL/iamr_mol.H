@@ -69,25 +69,6 @@ namespace MOL {
                            amrex::Vector<amrex::BCRec> const& bcs,
 			                 amrex::BCRec  const* d_bcrec_ptr);
 
-    void ComputeFluxes ( amrex::Box const& bx,
-                         D_DECL( amrex::Array4<amrex::Real> const& fx,
-                                 amrex::Array4<amrex::Real> const& fy,
-                                 amrex::Array4<amrex::Real> const& fz),
-                         D_DECL( amrex::Array4<amrex::Real const> const& umac,
-                                 amrex::Array4<amrex::Real const> const& vmac,
-                                 amrex::Array4<amrex::Real const> const& wmac),
-                         D_DECL( amrex::Array4<amrex::Real const> const& xedge,
-                                 amrex::Array4<amrex::Real const> const& yedge,
-                                 amrex::Array4<amrex::Real const> const& zedge),
-                         int ncomp );
-
-    void ComputeDivergence ( amrex::Box const& bx,
-                             amrex::Array4<amrex::Real> const& div,
-                             D_DECL( amrex::Array4<amrex::Real const> const& fx,
-                                     amrex::Array4<amrex::Real const> const& fy,
-                                     amrex::Array4<amrex::Real const> const& fz),
-                             int ncomp, amrex::Geometry const& geom );
-
     void ExtrapVelToFaces ( const amrex::MultiFab&  vel,
                             D_DECL(amrex::MultiFab& umac,
                                    amrex::MultiFab& vmac,
@@ -104,18 +85,6 @@ namespace MOL {
                              amrex::Array4<amrex::Real const > const& vcc,
                              const amrex::Geometry&  geom,
                              const amrex::BCRec* bcs );
-
-    void AreaWeightFluxes ( D_DECL( const amrex::Box& xbx,
-				    const amrex::Box& ybx,
-				    const amrex::Box& zbx),
-                            D_DECL( amrex::Array4<amrex::Real> const& fx,
-                                    amrex::Array4<amrex::Real> const& fy,
-                                    amrex::Array4<amrex::Real> const& fz),
-                            D_DECL( amrex::Array4<amrex::Real> const& fxtmp,
-                                    amrex::Array4<amrex::Real> const& fytmp,
-                                    amrex::Array4<amrex::Real> const& fztmp),
-                            int ncomp,
-                            const amrex::Real* dx );
 
 #ifdef AMREX_USE_EB
     void EB_ComputeEdgeState ( amrex::Box const& bx,
@@ -136,31 +105,6 @@ namespace MOL {
                                amrex::Array4<amrex::Real const> const& ccc,
                                amrex::Array4<amrex::EBCellFlag const> const& flag);
 
-    void EB_ComputeFluxes ( amrex::Box const& bx,
-                            D_DECL( amrex::Array4<amrex::Real> const& fx,
-                                    amrex::Array4<amrex::Real> const& fy,
-                                    amrex::Array4<amrex::Real> const& fz),
-                            D_DECL( amrex::Array4<amrex::Real const> const& umac,
-                                    amrex::Array4<amrex::Real const> const& vmac,
-                                    amrex::Array4<amrex::Real const> const& wmac),
-                            D_DECL( amrex::Array4<amrex::Real const> const& xedge,
-                                    amrex::Array4<amrex::Real const> const& yedge,
-                                    amrex::Array4<amrex::Real const> const& zedge),
-                            int ncomp,
-                            amrex::Array4<amrex::EBCellFlag const> const& flag);
-
-    void EB_ComputeDivergence ( amrex::Box const& bx,
-                                amrex::Array4<amrex::Real> const& div,
-                                D_DECL( amrex::Array4<amrex::Real const> const& fx,
-                                        amrex::Array4<amrex::Real const> const& fy,
-                                        amrex::Array4<amrex::Real const> const& fz),
-                                int ncomp, amrex::Geometry const& geom,
-                                amrex::Array4<amrex::EBCellFlag const> const& flag,
-                                amrex::Array4<amrex::Real const> const& vfrac,
-                                D_DECL( amrex::Array4<amrex::Real const> const& apx,
-                                        amrex::Array4<amrex::Real const> const& apy,
-                                        amrex::Array4<amrex::Real const> const& apz ) );
-
     void EB_PredictVelOnFaces ( amrex::Box const& ccbx,
                                 D_DECL( amrex::Box const& ubx,
                                         amrex::Box const& vbx,
@@ -176,21 +120,6 @@ namespace MOL {
                                 amrex::Array4<amrex::Real const> const& ccc,
                                 const amrex::Geometry&  geom,
                                 const amrex::BCRec* bcs );
-
-    void EB_AreaWeightFluxes ( D_DECL( const amrex::Box& xbx,
-				       const amrex::Box& ybx,
-				       const amrex::Box& zbx),
-                               D_DECL( amrex::Array4<amrex::Real> const& fx,
-                                       amrex::Array4<amrex::Real> const& fy,
-                                       amrex::Array4<amrex::Real> const& fz),
-                               D_DECL( amrex::Array4<amrex::Real> const& fxtmp,
-                                       amrex::Array4<amrex::Real> const& fytmp,
-                                       amrex::Array4<amrex::Real> const& fztmp),
-                               D_DECL( amrex::Array4<amrex::Real const> const& apx,
-                                       amrex::Array4<amrex::Real const> const& apy,
-                                       amrex::Array4<amrex::Real const> const& apz ),
-                               int ncomp,
-                               const amrex::Real* dx );
 
 #endif
 
