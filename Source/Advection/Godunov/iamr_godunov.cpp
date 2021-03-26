@@ -1,9 +1,11 @@
 #include <iamr_godunov.H>
 #include <iamr_advection.H>
-#include <NS_util.H>
+#ifdef AMREX_USE_EB
+#include <iamr_ebgodunov.H>
+#include <iamr_redistribution.H>
+#endif
 
 using namespace amrex;
-
 
 void
 Godunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
@@ -23,22 +25,48 @@ Godunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                        MultiFab const& fq,
                        const int fq_comp,
                        MultiFab const& divu,
+                       Vector<BCRec> const& h_bc,
                        BCRec const* d_bc,
                        Geometry const& geom,
                        Gpu::DeviceVector<int>& iconserv,
                        const Real dt,
+                       const bool is_velocity,
                        const bool use_ppm,
                        const bool use_forces_in_trans,
-                       const bool is_velocity  )
+                       std::string redistribution_type)
 {
     BL_PROFILE("Godunov::ComputeAofs()");
+
+#ifdef AMREX_USE_EB
+    AMREX_ALWAYS_ASSERT(state.hasEBFabFactory());
+
+    for (int n = 0; n < ncomp; n++)
+       if (!iconserv[n]) amrex::Abort("Non-conservative form of Godunov is not supported for EB geometries");
+
+    if (use_ppm)
+        amrex::Abort("Godunov does not support use_ppm=true for EB geometries");
+    if (use_forces_in_trans)
+        amrex::Abort("Godunov does not support use_forces_in_trans=true for EB geometries");
+
+    auto const& ebfact= dynamic_cast<EBFArrayBoxFactory const&>(state.Factory());
+    auto const& flags = ebfact.getMultiEBCellFlagFab();
+    auto const& fcent = ebfact.getFaceCent();
+    auto const& ccent = ebfact.getCentroid();
+    auto const& vfrac = ebfact.getVolFrac();
+    auto const& areafrac = ebfact.getAreaFrac();
+#endif
 
     //FIXME - check on adding tiling here
     for (MFIter mfi(aofs); mfi.isValid(); ++mfi)
     {
 
         const Box& bx   = mfi.tilebox();
-
+#ifdef AMREX_USE_EB
+        auto const& flagfab = ebfact.getMultiEBCellFlagFab()[mfi];
+        bool regular = (flagfab.getType(amrex::grow(bx,2)) == FabType::regular);
+#else
+        bool regular = true;
+#endif
         //
         // Get handlers to Array4
         //
@@ -54,43 +82,127 @@ Godunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                       const auto& v = vmac.const_array(mfi);,
                       const auto& w = wmac.const_array(mfi););
 
-        if (not known_edgestate)
+        if (regular)   // Plain Godunov
         {
-            ComputeEdgeState( bx, ncomp,
-                              state.array(mfi,state_comp),
-                              AMREX_D_DECL( xed, yed, zed ),
-                              AMREX_D_DECL( u, v, w ),
-                              divu.array(mfi),
-                              fq.array(mfi,fq_comp),
-                              geom, dt, d_bc,
-                              iconserv.data(),
-                              use_ppm,
-                              use_forces_in_trans,
-                              is_velocity );
+            if (not known_edgestate)
+            {
+                Godunov::ComputeEdgeState( bx, ncomp,
+                                           state.array(mfi,state_comp),
+                                           AMREX_D_DECL( xed, yed, zed ),
+                                           AMREX_D_DECL( u, v, w ),
+                                           divu.array(mfi),
+                                           fq.array(mfi,fq_comp),
+                                           geom, dt, d_bc,
+                                           iconserv.data(),
+                                           use_ppm,
+                                           use_forces_in_trans,
+                                           is_velocity );
+            }
+
+            Advection::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
+                                      AMREX_D_DECL( u, v, w ),
+                                      AMREX_D_DECL( xed, yed, zed ),
+                                      geom, ncomp );
+
+            Advection::ComputeDivergence( bx,
+                                          aofs.array(mfi,aofs_comp),
+                                          AMREX_D_DECL( fx, fy, fz ),
+                                          AMREX_D_DECL( xed, yed, zed ),
+                                          AMREX_D_DECL( u, v, w ),
+                                          ncomp, geom, iconserv.data() );
         }
+#ifdef AMREX_USE_EB
+        else     // EB Godunov
+        {
 
-        Advection::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
-                       AMREX_D_DECL( u, v, w ),
-                       AMREX_D_DECL( xed, yed, zed ),
-                       geom, ncomp );
 
-        Advection::ComputeDivergence( bx,
-                           aofs.array(mfi,aofs_comp),
-                           AMREX_D_DECL( fx, fy, fz ),
-                           AMREX_D_DECL( xed, yed, zed ),
-                           AMREX_D_DECL( u, v, w ),
-                           ncomp, geom, iconserv.data() );
+            Box gbx = bx;
+            // We need 3 if we are doing state redistribution
+            if (redistribution_type == "StateRedist" ||
+                redistribution_type == "MergeRedist")
+                gbx.grow(3);
+            else if (redistribution_type == "FluxRedist")
+                gbx.grow(2);
+            else if (redistribution_type == "NoRedist")
+                gbx.grow(1);
+            else
+                amrex::Abort("Dont know this redistribution type");
 
-	//
-	// NOTE this sync cannot protect temporaries in ComputeEdgeState, ComputeFluxes
-	// or ComputeDivergence, since functions have their own scope. As soon as the
-	// CPU hits the end of the function, it will call the destructor for all
-	// temporaries created in that function.
-	//
+            AMREX_D_TERM(Array4<Real const> const& fcx = fcent[0]->const_array(mfi);,
+                         Array4<Real const> const& fcy = fcent[1]->const_array(mfi);,
+                         Array4<Real const> const& fcz = fcent[2]->const_array(mfi););
+
+            AMREX_D_TERM(Array4<Real const> const& apx = areafrac[0]->const_array(mfi);,
+                         Array4<Real const> const& apy = areafrac[1]->const_array(mfi);,
+                         Array4<Real const> const& apz = areafrac[2]->const_array(mfi););
+
+            Array4<Real const> const& ccent_arr = ccent.const_array(mfi);
+            Array4<Real const> const& vfrac_arr = vfrac.const_array(mfi);
+            auto const& flags_arr  = flags.const_array(mfi);
+
+            int ngrow = 4;
+
+            if (redistribution_type=="StateRedist")
+                ++ngrow;
+
+            FArrayBox tmpfab(amrex::grow(bx,ngrow),  (4*AMREX_SPACEDIM + 2)*ncomp);
+            Elixir    eli = tmpfab.elixir();
+
+
+            if (not known_edgestate)
+            {
+                EBGodunov::ComputeEdgeState( gbx, ncomp,
+                                             state.array(mfi,state_comp),
+                                             AMREX_D_DECL( xed, yed, zed ),
+                                             AMREX_D_DECL( u, v, w ),
+                                             divu.array(mfi),
+                                             fq.array(mfi,fq_comp),
+                                             geom, dt, h_bc, d_bc,
+                                             iconserv.data(),
+                                             tmpfab.dataPtr(),
+                                             flags_arr,
+                                             AMREX_D_DECL( apx, apy, apz ),
+                                             vfrac_arr,
+                                             AMREX_D_DECL( fcx, fcy, fcz ),
+                                             ccent_arr,
+                                             is_velocity );
+            }
+
+            Advection::EB_ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
+                                         AMREX_D_DECL( u, v, w ),
+                                         AMREX_D_DECL( xed, yed, zed ),
+                                         AMREX_D_DECL( apx, apy, apz ),
+                                         geom, ncomp, flags_arr );
+
+            // div at ncomp*3 to make space for the 3 redistribute temporaries
+            Array4<Real> divtmp_arr = tmpfab.array(ncomp*3);
+
+            Advection::EB_ComputeDivergence( gbx,
+                                             divtmp_arr,
+                                             AMREX_D_DECL( fx, fy, fz ),
+                                             vfrac_arr, ncomp, geom );
+
+            Array4<Real> scratch = tmpfab.array(0);
+            Redistribution::Apply( bx, ncomp, aofs.array(mfi, aofs_comp), divtmp_arr,
+                                   state.const_array(mfi, state_comp), scratch, flags_arr,
+                                   AMREX_D_DECL(apx,apy,apz), vfrac_arr,
+                                   AMREX_D_DECL(fcx,fcy,fcz), ccent_arr, geom, dt,
+                                   redistribution_type );
+
+            // Change sign because for EB we computed -div
+            aofs[mfi].mult(-1., bx, aofs_comp, ncomp);
+
+        }
+#endif
+
+        // Note this sync is needed since ComputeEdgeState() contains temporaries
+	// Not sure it's really needed when known_edgestate==true
         Gpu::streamSynchronize();  // otherwise we might be using too much memory
     }
 
+
 }
+
 
 
 

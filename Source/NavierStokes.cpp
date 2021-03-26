@@ -860,26 +860,14 @@ NavierStokes::scalar_advection (Real dt,
                 iconserv[comp] = (advectionType[fscalar+comp] == Conservative) ? 1 : 0;
             }
 
-#ifdef AMREX_USE_EB
-            EBGodunov::ComputeAofs(*aofs, fscalar, num_scalars,
-                                   Smf, 0,
-                                   AMREX_D_DECL(u_mac[0],u_mac[1],u_mac[2]),
-                                   AMREX_D_DECL(edgestate[0],edgestate[1],edgestate[2]), 0, false,
-                                   AMREX_D_DECL(cfluxes[0],cfluxes[1],cfluxes[2]), 0,
-                                   forcing_term, 0, *divu_fp,
-                                   m_bcrec_scalars, m_bcrec_scalars_d.dataPtr(),
-                                   geom, iconserv, dt, true, redistribution_type );
-
-
-#else
             Godunov::ComputeAofs(*aofs, fscalar, num_scalars,
                                  Smf, 0,
                                  AMREX_D_DECL( u_mac[0], u_mac[1], u_mac[2] ),
                                  AMREX_D_DECL( edgestate[0], edgestate[1], edgestate[2] ), 0, false,
                                  AMREX_D_DECL( cfluxes[0], cfluxes[1], cfluxes[2] ), 0,
-                                 forcing_term, 0, *divu_fp, m_bcrec_scalars_d.dataPtr(),
-                                 geom, iconserv, dt, godunov_use_ppm, godunov_use_forces_in_trans, false );
-#endif
+                                 forcing_term, 0, *divu_fp, m_bcrec_scalars, m_bcrec_scalars_d.dataPtr(),
+                                 geom, iconserv, dt, false, godunov_use_ppm, godunov_use_forces_in_trans,
+                                 redistribution_type);
 
             delete divu_fp;
         }

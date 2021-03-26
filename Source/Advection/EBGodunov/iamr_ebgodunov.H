@@ -7,32 +7,6 @@
 
 namespace EBGodunov {
 
-
-    void ComputeAofs ( amrex::MultiFab& aofs, const int aofs_comp, const int ncomp,
-                       amrex::MultiFab const& state, const int state_comp,
-                       AMREX_D_DECL( amrex::MultiFab const& umac,
-                                     amrex::MultiFab const& vmac,
-                                     amrex::MultiFab const& wmac),
-                       AMREX_D_DECL( amrex::MultiFab& xedge,
-                                     amrex::MultiFab& yedge,
-                                     amrex::MultiFab& zedge),
-                       const int  edge_comp,
-                       const bool known_edgestate,
-                       AMREX_D_DECL( amrex::MultiFab& xfluxes,
-                                     amrex::MultiFab& yfluxes,
-                                     amrex::MultiFab& zfluxes),
-                       int fluxes_comp,
-                       amrex::MultiFab const& fq,
-                       const int fq_comp,
-                       amrex::MultiFab const& divu,
-                       amrex::Vector<amrex::BCRec> const& h_bc,
-                       amrex::BCRec const* d_bc,
-                       amrex::Geometry const& geom,
-                       amrex::Gpu::DeviceVector<int>& iconserv,
-                       const amrex::Real dt,
-                       const bool is_velocity,
-                       std::string redistribution_type);
-
     void ComputeSyncAofs ( amrex::MultiFab& aofs, const int aofs_comp, const int ncomp,
                            amrex::MultiFab const& state, const int state_comp,
                            AMREX_D_DECL( amrex::MultiFab const& umac,

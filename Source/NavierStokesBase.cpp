@@ -6,6 +6,7 @@
 #include <AMReX_MLNodeLaplacian.H>
 
 #include <iamr_mol.H>
+#include <iamr_godunov.H>
 
 #ifdef AMREX_USE_EB
 #include <AMReX_EBAmrUtil.H>
@@ -13,8 +14,6 @@
 #include <AMReX_EBFArrayBox.H>
 #include <iamr_ebgodunov.H>
 #include <iamr_redistribution.H>
-#else
-#include <iamr_godunov.H>
 #endif
 
 #include <NavierStokesBase.H>
@@ -155,6 +154,8 @@ bool         NavierStokesBase::no_eb_in_domain     = true;
 bool         NavierStokesBase::body_state_set      = false;
 std::vector<Real> NavierStokesBase::body_state;
 std::string  NavierStokesBase::redistribution_type = "FluxRedist";
+#else
+std::string  NavierStokesBase::redistribution_type = "NoRedist";
 #endif
 
 //
@@ -3466,24 +3467,14 @@ NavierStokesBase::velocity_advection (Real dt)
                 iconserv[comp] = (advectionType[comp] == Conservative) ? true : false;
             }
 
-#ifndef AMREX_USE_EB
             Godunov::ComputeAofs(*aofs, Xvel, AMREX_SPACEDIM,
                                  S_term, 0,
                                  AMREX_D_DECL(u_mac[0],u_mac[1],u_mac[2]),
                                  AMREX_D_DECL(edgestate[0],edgestate[1],edgestate[2]), 0, false,
                                  AMREX_D_DECL(cfluxes[0],cfluxes[1],cfluxes[2]), 0,
-                                 forcing_term, 0, divu_fp, m_bcrec_velocity_d.dataPtr(), geom, iconserv, dt,
-                                 godunov_use_ppm, godunov_use_forces_in_trans, true);
-#else
-            EBGodunov::ComputeAofs(*aofs, Xvel, AMREX_SPACEDIM,
-                                   S_term, 0,
-                                   AMREX_D_DECL(u_mac[0],u_mac[1],u_mac[2]),
-                                   AMREX_D_DECL(edgestate[0],edgestate[1],edgestate[2]), 0, false,
-                                   AMREX_D_DECL(cfluxes[0],cfluxes[1],cfluxes[2]), 0,
-                                   forcing_term, 0, divu_fp,
-                                   m_bcrec_velocity, m_bcrec_velocity_d.dataPtr(),
-                                   geom, iconserv, dt, true, redistribution_type);
-#endif
+                                 forcing_term, 0, divu_fp, m_bcrec_velocity, m_bcrec_velocity_d.dataPtr(),
+                                 geom, iconserv, dt, true, godunov_use_ppm, godunov_use_forces_in_trans,
+                                 redistribution_type);
 
         }
         else

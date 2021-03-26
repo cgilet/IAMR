@@ -24,13 +24,16 @@ namespace Godunov {
                        amrex::MultiFab const& fq,
                        const int fq_comp,
                        amrex::MultiFab const& divu,
+                       amrex::Vector<amrex::BCRec> const& h_bc,
                        amrex::BCRec const* d_bc,
                        amrex::Geometry const& geom,
                        amrex::Gpu::DeviceVector<int>& iconserv,
                        const amrex::Real dt,
-                       const bool use_ppm,
-                       const bool use_forces_in_trans,
-                       const bool is_velocity  );
+                       const bool is_velocity,
+                       const bool use_ppm = false,
+                       const bool use_forces_in_trans = false,
+                       std::string redistribution_type = "NoRedist");
+
 
     void ComputeSyncAofs ( amrex::MultiFab& aofs, const int aofs_comp, const int ncomp,
                            amrex::MultiFab const& state, const int state_comp,
