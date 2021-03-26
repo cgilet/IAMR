@@ -461,7 +461,7 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                Advection::ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
+                Advection::ComputeFluxes(bx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
                                          D_DECL(xed,yed,zed), geom, ncomp );
 
                 // Compute divergence
