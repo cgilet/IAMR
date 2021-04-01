@@ -9,9 +9,6 @@
 #include <NavierStokesBase.H>
 #include <OutFlowBC.H>
 
-#ifdef AMREX_USE_EB
-#include <iamr_ebgodunov.H>
-#endif
 #include <iamr_mol.H>
 #include <iamr_godunov.H>
 
@@ -764,21 +761,10 @@ MacProj::mac_sync_compute (int                   level,
                 iconserv.resize(1, 0);
                 iconserv[0] = (advectionType[comp] == Conservative) ? 1 : 0;
 
-#ifdef AMREX_USE_EB
                 Vector<BCRec> bcrec_ptr = comp < AMREX_SPACEDIM
                                                  ? ns_level.m_bcrec_velocity
                                                  : ns_level.m_bcrec_scalars;
-                EBGodunov::ComputeSyncAofs(*sync_ptr, sync_comp, ncomp,
-                                           Q, comp,
-                                           AMREX_D_DECL(u_mac[0],u_mac[1],u_mac[2]),
-                                           AMREX_D_DECL(*Ucorr[0],*Ucorr[1],*Ucorr[2]),
-                                           AMREX_D_DECL(edgestate[0],edgestate[1],edgestate[2]), 0, false,
-                                           AMREX_D_DECL(fluxes[0],fluxes[1],fluxes[2]), comp,
-                                           forcing_term, comp, *divu_fp,
-                                           bcrec_ptr, d_bcrec_ptr,
-                                           geom, iconserv, dt, true,
-                                           ns_level.redistribution_type);
-#else
+
                 Godunov::ComputeSyncAofs(*sync_ptr, sync_comp, ncomp,
                                          Q, comp,
                                          AMREX_D_DECL(u_mac[0],u_mac[1],u_mac[2]),
@@ -786,10 +772,10 @@ MacProj::mac_sync_compute (int                   level,
                                          AMREX_D_DECL(edgestate[0],edgestate[1],edgestate[2]), 0, false,
                                          AMREX_D_DECL(fluxes[0],fluxes[1],fluxes[2]), comp,
                                          forcing_term, comp, *divu_fp,
-                                         d_bcrec_ptr, geom, iconserv, dt,
+                                         bcrec_ptr, d_bcrec_ptr,
+                                         geom, iconserv, dt, is_velocity,
                                          ns_level.GodunovUsePPM(), ns_level.GodunovUseForcesInTrans(),
-                                         is_velocity );
-#endif
+                                         ns_level.redistribution_type);
 
             }
         }
@@ -900,18 +886,6 @@ MacProj::mac_sync_compute (int                    level,
         BCRec  const* d_bcrec_ptr = NULL;
         Gpu::DeviceVector<int> iconserv;
 
-#ifdef AMREX_USE_EB
-        EBGodunov::ComputeSyncAofs(Sync, s_ind, ncomp,
-                                   MultiFab(), s_ind,                      // this is not used when known_edgestate = true
-                                   AMREX_D_DECL(*Ucorr[0],*Ucorr[1],*Ucorr[2]),  // this is not used when we pass edge states
-                                   AMREX_D_DECL(*Ucorr[0],*Ucorr[1],*Ucorr[2]),
-                                   AMREX_D_DECL(*sync_edges[0],*sync_edges[1],*sync_edges[2]), eComp, true,
-                                   AMREX_D_DECL(fluxes[0],fluxes[1],fluxes[2]), 0,
-                                   MultiFab(), 0, MultiFab(),                        // this is not used when known_edgestate = true
-                                   {}, NULL,
-                                   geom, iconserv, dt, true,
-                                   ns_level.redistribution_type);
-#else
         Godunov::ComputeSyncAofs(Sync, s_ind, ncomp,
                                  MultiFab(), s_ind,                      // this is not used when known_edgestate = true
                                  AMREX_D_DECL(*Ucorr[0],*Ucorr[1],*Ucorr[2]),  // this is not used when we pass edge states
@@ -919,9 +893,10 @@ MacProj::mac_sync_compute (int                    level,
                                  AMREX_D_DECL(*sync_edges[0],*sync_edges[1],*sync_edges[2]), eComp, true,
                                  AMREX_D_DECL(fluxes[0],fluxes[1],fluxes[2]), 0,
                                  MultiFab(), 0, MultiFab(),                        // this is not used when known_edgestate = true
-                                 d_bcrec_ptr, geom, iconserv, 0.0, false, false, false  ); // this is not used when known_edgestate = true
-#endif
-
+                                 {}, NULL,                                         // this is not used when known_edgestate = true
+                                 geom, iconserv, dt,
+                                 false, false, false,                             // this is not used when known_edgestate = true
+                                 ns_level.redistribution_type);
     }
 
     if (level > 0 && update_fluxreg)
