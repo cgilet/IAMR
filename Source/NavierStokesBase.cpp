@@ -4699,9 +4699,11 @@ NavierStokesBase::nghost_force ()
 #ifdef AMREX_USE_EB
     else if (redistribution_type == "StateRedist")
         return 4;
-#endif
     else
         return 3;
+#endif
+    else
+      return 1;
 }
 
 #ifdef AMREX_USE_EB
