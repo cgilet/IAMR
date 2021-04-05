@@ -109,8 +109,8 @@ set_pressure_bc (BCRec&       bc,
     }
 }
 
-static
-void
+static 
+void 
 set_gradpx_bc (BCRec&       bc,
 	       const BCRec& phys_bc)
 {
@@ -160,26 +160,26 @@ set_gradpz_bc (BCRec&       bc,
 }
 #endif
 
-static
-void
+static 
+void 
 set_divu_bc(BCRec& bc, const BCRec& phys_bc)
 {
     const int* lo_bc = phys_bc.lo();
     const int* hi_bc = phys_bc.hi();
-    for (int i = 0; i < BL_SPACEDIM; i++)
+    for (int i = 0; i < BL_SPACEDIM; i++) 
     {
         bc.setLo(i,divu_bc[lo_bc[i]]);
         bc.setHi(i,divu_bc[hi_bc[i]]);
     }
 }
 
-static
-void
+static 
+void 
 set_dsdt_bc(BCRec& bc, const BCRec& phys_bc)
 {
     const int* lo_bc = phys_bc.lo();
     const int* hi_bc = phys_bc.hi();
-    for (int i = 0; i < BL_SPACEDIM; i++)
+    for (int i = 0; i < BL_SPACEDIM; i++) 
     {
         bc.setLo(i,dsdt_bc[lo_bc[i]]);
         bc.setHi(i,dsdt_bc[hi_bc[i]]);
@@ -205,7 +205,7 @@ typedef StateDescriptor::BndryFunc BndryFunc;
 //
 // Get EB-aware interpolater when needed
 //
-#ifdef AMREX_USE_EB
+#ifdef AMREX_USE_EB  
   static auto& cc_interp = eb_cell_cons_interp;
 #else
   static auto& cc_interp = cell_cons_interp;
@@ -263,8 +263,11 @@ NavierStokes::variableSetUp ()
     BndryFunc state_bf(state_fill);
     state_bf.setRunOnGPU(true);
 
-    BndryFunc press_bf(press_bf);
+    BndryFunc press_bf(press_fill);
     press_bf.setRunOnGPU(true);
+
+    BndryFunc null_bf(dummy_fill);
+    null_bf.setRunOnGPU(true);
 
     set_x_vel_bc(bc,phys_bc);
     desc_lst.setComponent(State_Type,Xvel,"x_velocity",bc,vel_bf);
@@ -348,7 +351,7 @@ NavierStokes::variableSetUp ()
 
     set_pressure_bc(bc,phys_bc);
     desc_lst.setComponent(Press_Type,Pressure,"pressure",bc,press_bf);
-
+ 
     //
     // ---- grad P
     //
@@ -359,8 +362,6 @@ NavierStokes::variableSetUp ()
     desc_lst.addDescriptor(Gradp_Type,IndexType::TheCellType(),
     			   StateDescriptor::Interval,gradp_grow,AMREX_SPACEDIM,
     			   &cc_interp,state_data_extrap,store_in_checkpoint);
-    amrex::StateDescriptor::BndryFunc gradp_bf(dummy_fill);
-    gradp_bf.setRunOnGPU(true);
 
     Vector<BCRec>       bcs(BL_SPACEDIM);
     Vector<std::string> name(BL_SPACEDIM);
@@ -368,18 +369,18 @@ NavierStokes::variableSetUp ()
     set_gradpx_bc(bc,phys_bc);
     bcs[0]  = bc;
     name[0] = "gradpx";
-
+    
     set_gradpy_bc(bc,phys_bc);
     bcs[1]  = bc;
     name[1] = "gradpy";
-
+    
 #if(AMREX_SPACEDIM==3)
     set_gradpz_bc(bc,phys_bc);
     bcs[2]  = bc;
     name[2] = "gradpz";
 #endif
 
-    desc_lst.setComponent(Gradp_Type, Gradpx, name, bcs, gradp_bf);
+    desc_lst.setComponent(Gradp_Type, Gradpx, name, bcs, null_bf);
 
     //
     // ---- Additions for using Temperature
@@ -393,8 +394,8 @@ NavierStokes::variableSetUp ()
                                StateDescriptor::Point,nGrowDivu,1,
 			       &cc_interp);
 	set_divu_bc(bc,phys_bc);
-	desc_lst.setComponent(Divu_Type,Divu,"divu",bc,dummy_fill);
-
+	desc_lst.setComponent(Divu_Type,Divu,"divu",bc,null_bf);
+	
 	// stick Dsdt_Type on the end of the descriptor list
 	Dsdt_Type = desc_lst.size();
 	int nGrowDsdt = 0;
@@ -402,7 +403,7 @@ NavierStokes::variableSetUp ()
                                StateDescriptor::Point,nGrowDsdt,1,
 			       &cc_interp);
 	set_dsdt_bc(bc,phys_bc);
-	desc_lst.setComponent(Dsdt_Type,Dsdt,"dsdt",bc,dummy_fill);
+	desc_lst.setComponent(Dsdt_Type,Dsdt,"dsdt",bc,null_bf);
     }
 
     //
@@ -418,13 +419,13 @@ NavierStokes::variableSetUp ()
                              &cc_interp,state_data_extrap,store_in_checkpoint);
 
       set_average_bc(bc,phys_bc);
-      desc_lst.setComponent(Average_Type,Xvel,"xvel_avg_dummy",bc,dummy_fill);
-      desc_lst.setComponent(Average_Type,Xvel+BL_SPACEDIM,"xvel_rms_dummy",bc,dummy_fill);
-      desc_lst.setComponent(Average_Type,Yvel,"yvel_avg_dummy",bc,dummy_fill);
-      desc_lst.setComponent(Average_Type,Yvel+BL_SPACEDIM,"yvel_rms_dummy",bc,dummy_fill);
+      desc_lst.setComponent(Average_Type,Xvel,"xvel_avg_dummy",bc,null_bf);
+      desc_lst.setComponent(Average_Type,Xvel+BL_SPACEDIM,"xvel_rms_dummy",bc,null_bf);
+      desc_lst.setComponent(Average_Type,Yvel,"yvel_avg_dummy",bc,null_bf);
+      desc_lst.setComponent(Average_Type,Yvel+BL_SPACEDIM,"yvel_rms_dummy",bc,null_bf);
 #if (BL_SPACEDIM==3)
-      desc_lst.setComponent(Average_Type,Zvel,"zvel_avg_dummy",bc,dummy_fill);
-      desc_lst.setComponent(Average_Type,Zvel+BL_SPACEDIM,"zvel_rms_dummy",bc,dummy_fill);
+      desc_lst.setComponent(Average_Type,Zvel,"zvel_avg_dummy",bc,null_bf);
+      desc_lst.setComponent(Average_Type,Zvel+BL_SPACEDIM,"zvel_rms_dummy",bc,null_bf);
 #endif
     }
 
