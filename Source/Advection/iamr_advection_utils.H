@@ -1,10 +1,10 @@
-#ifndef IAMR_ADVECTION_H
-#define IAMR_ADVECTION_H
+#ifndef IAMR_ADVECTION_UTILS_H
+#define IAMR_ADVECTION_UTILS_H
 
 #include <AMReX_MultiFabUtil.H>
 #include <AMReX_BCRec.H>
 
-namespace Advection {
+namespace AdvectionUtils {
 
 
 void ComputeFluxes ( amrex::Box const& bx,

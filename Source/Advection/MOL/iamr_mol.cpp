@@ -1,6 +1,6 @@
 #include <iamr_mol.H>
 #include <iamr_constants.H>
-#include <iamr_advection.H>
+#include <iamr_advection_utils.H>
 #ifdef AMREX_USE_EB
 #include <AMReX_MultiCutFab.H>
 #include <iamr_redistribution.H>
@@ -180,7 +180,7 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                Advection::EB_ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(u,v,w),
+                AdvectionUtils::EB_ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(u,v,w),
                                             D_DECL(xed,yed,zed), D_DECL(apx,apy,apz),
                                             geom, ncomp, flag );
 
@@ -195,8 +195,8 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 // Compute conservative divergence
                 // Redistribute needs 2 ghost cells in div
 	        Box g2bx = amrex::grow(bx,2);
-                Advection::EB_ComputeDivergence(g2bx, divtmp_arr, D_DECL(fx,fy,fz), vfrac,
-                                                ncomp, geom );
+                AdvectionUtils::EB_ComputeDivergence(g2bx, divtmp_arr, D_DECL(fx,fy,fz), vfrac,
+                                                     ncomp, geom );
 
                 // Redistribute
 		Array4<Real> scratch = tmpfab.array(0);
@@ -222,14 +222,14 @@ MOL::ComputeAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                Advection::ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(u,v,w),
-                                         D_DECL(xed,yed,zed), geom, ncomp );
+                AdvectionUtils::ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(u,v,w),
+                                              D_DECL(xed,yed,zed), geom, ncomp );
 
                 // Compute divergence
                 std::vector<int>  iconserv(ncomp,1); // for now only conservative
-                Advection::ComputeDivergence(bx, aofs.array(mfi, aofs_comp), D_DECL(fx,fy,fz),
-                                             D_DECL( xed, yed, zed ), D_DECL( u, v, w ),
-                                             ncomp, geom, iconserv.data());
+                AdvectionUtils::ComputeDivergence(bx, aofs.array(mfi, aofs_comp), D_DECL(fx,fy,fz),
+                                                  D_DECL( xed, yed, zed ), D_DECL( u, v, w ),
+                                                  ncomp, geom, iconserv.data());
 
             }
         }
@@ -407,9 +407,9 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                Advection::EB_ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
-                                            D_DECL(xed,yed,zed), D_DECL(apx,apy,apz),
-                                            geom, ncomp, flag );
+                AdvectionUtils::EB_ComputeFluxes(gbx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
+                                                 D_DECL(xed,yed,zed), D_DECL(apx,apy,apz),
+                                                 geom, ncomp, flag );
 
                 //
                 // Compute divergence and redistribute
@@ -421,8 +421,8 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 // Compute conservative divergence
                 std::vector<int> iconserv(ncomp,1);
                 Box g2bx = amrex::grow(bx,2);
-                Advection::EB_ComputeDivergence(g2bx, divtmp_arr, AMREX_D_DECL(fx,fy,fz), vfrac,
-                                                ncomp, geom );
+                AdvectionUtils::EB_ComputeDivergence(g2bx, divtmp_arr, AMREX_D_DECL(fx,fy,fz), vfrac,
+                                                     ncomp, geom );
 
                 // Redistribute
 		Array4<Real> scratch = tmpfab.array(0);
@@ -461,14 +461,14 @@ MOL::ComputeSyncAofs ( MultiFab& aofs, int aofs_comp, int ncomp,
                 }
 
                 // Compute fluxes
-                Advection::ComputeFluxes(bx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
-                                         D_DECL(xed,yed,zed), geom, ncomp );
+                AdvectionUtils::ComputeFluxes(bx, D_DECL(fx,fy,fz), D_DECL(uc,vc,wc),
+                                              D_DECL(xed,yed,zed), geom, ncomp );
 
                 // Compute divergence
                 Array4<Real> divtmp_arr = tmpfab.array(ncomp*AMREX_SPACEDIM);
-                Advection::ComputeDivergence(bx, divtmp_arr, D_DECL(fx,fy,fz),
-                                             D_DECL( xed, yed, zed ), D_DECL( uc, vc, wc ),
-                                             ncomp, geom, iconserv.data());
+                AdvectionUtils::ComputeDivergence(bx, divtmp_arr, D_DECL(fx,fy,fz),
+                                                  D_DECL( xed, yed, zed ), D_DECL( uc, vc, wc ),
+                                                  ncomp, geom, iconserv.data());
 
                 // Sum contribution to sync aofs
                 auto const& aofs_arr = aofs.array(mfi, aofs_comp);

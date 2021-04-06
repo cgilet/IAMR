@@ -1,5 +1,5 @@
 #include <iamr_godunov.H>
-#include <iamr_advection.H>
+#include <iamr_advection_utils.H>
 #ifdef AMREX_USE_EB
 #include <iamr_ebgodunov.H>
 #include <iamr_redistribution.H>
@@ -99,17 +99,17 @@ Godunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                                            is_velocity );
             }
 
-            Advection::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
-                                      AMREX_D_DECL( u, v, w ),
-                                      AMREX_D_DECL( xed, yed, zed ),
-                                      geom, ncomp );
+            AdvectionUtils::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
+                                           AMREX_D_DECL( u, v, w ),
+                                           AMREX_D_DECL( xed, yed, zed ),
+                                           geom, ncomp );
 
-            Advection::ComputeDivergence( bx,
-                                          aofs.array(mfi,aofs_comp),
-                                          AMREX_D_DECL( fx, fy, fz ),
-                                          AMREX_D_DECL( xed, yed, zed ),
-                                          AMREX_D_DECL( u, v, w ),
-                                          ncomp, geom, iconserv.data() );
+            AdvectionUtils::ComputeDivergence( bx,
+                                               aofs.array(mfi,aofs_comp),
+                                               AMREX_D_DECL( fx, fy, fz ),
+                                               AMREX_D_DECL( xed, yed, zed ),
+                                               AMREX_D_DECL( u, v, w ),
+                                               ncomp, geom, iconserv.data() );
         }
 #ifdef AMREX_USE_EB
         else     // EB Godunov
@@ -168,19 +168,19 @@ Godunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                                              is_velocity );
             }
 
-            Advection::EB_ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
-                                         AMREX_D_DECL( u, v, w ),
-                                         AMREX_D_DECL( xed, yed, zed ),
-                                         AMREX_D_DECL( apx, apy, apz ),
-                                         geom, ncomp, flags_arr );
+            AdvectionUtils::EB_ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
+                                              AMREX_D_DECL( u, v, w ),
+                                              AMREX_D_DECL( xed, yed, zed ),
+                                              AMREX_D_DECL( apx, apy, apz ),
+                                              geom, ncomp, flags_arr );
 
             // div at ncomp*3 to make space for the 3 redistribute temporaries
             Array4<Real> divtmp_arr = tmpfab.array(ncomp*3);
 
-            Advection::EB_ComputeDivergence( gbx,
-                                             divtmp_arr,
-                                             AMREX_D_DECL( fx, fy, fz ),
-                                             vfrac_arr, ncomp, geom );
+            AdvectionUtils::EB_ComputeDivergence( gbx,
+                                                  divtmp_arr,
+                                                  AMREX_D_DECL( fx, fy, fz ),
+                                                  vfrac_arr, ncomp, geom );
 
             Array4<Real> scratch = tmpfab.array(0);
             Redistribution::Apply( bx, ncomp, aofs.array(mfi, aofs_comp), divtmp_arr,
@@ -312,15 +312,15 @@ Godunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                                   is_velocity );
             }
 
-            Advection::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
-                                      AMREX_D_DECL( uc, vc, wc ),
-                                      AMREX_D_DECL( xed, yed, zed ),
-                                      geom, ncomp );
+            AdvectionUtils::ComputeFluxes( bx, AMREX_D_DECL( fx, fy, fz ),
+                                           AMREX_D_DECL( uc, vc, wc ),
+                                           AMREX_D_DECL( xed, yed, zed ),
+                                           geom, ncomp );
 
 
-            Advection::ComputeDivergence( bx, aofs.array(mfi, aofs_comp), D_DECL(fx,fy,fz),
-                                          D_DECL( xed, yed, zed ), D_DECL( uc, vc, wc ),
-                                          ncomp, geom, div_iconserv.data());
+            AdvectionUtils::ComputeDivergence( bx, aofs.array(mfi, aofs_comp), D_DECL(fx,fy,fz),
+                                               D_DECL( xed, yed, zed ), D_DECL( uc, vc, wc ),
+                                               ncomp, geom, div_iconserv.data());
         }
 #ifdef AMREX_USE_EB
         else     // EB Godunov
@@ -369,7 +369,7 @@ Godunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
                                              is_velocity );
             }
 
-            Advection::EB_ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
+            AdvectionUtils::EB_ComputeFluxes( gbx, AMREX_D_DECL( fx, fy, fz ),
                                          AMREX_D_DECL( uc, vc, wc ),
                                          AMREX_D_DECL( xed, yed, zed ),
                                          AMREX_D_DECL( apx, apy, apz ),
@@ -379,7 +379,7 @@ Godunov::ComputeSyncAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
             Array4<Real> divtmp_arr = tmpfab.array(ncomp*3);
             Array4<Real> divtmp_redist_arr = tmpfab.array(ncomp*4);
 
-            Advection::EB_ComputeDivergence( gbx,
+            AdvectionUtils::EB_ComputeDivergence( gbx,
                                              divtmp_arr,
                                              AMREX_D_DECL( fx, fy, fz ),
                                              vfrac_arr, ncomp, geom );

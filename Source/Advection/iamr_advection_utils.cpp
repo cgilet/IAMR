@@ -1,20 +1,20 @@
-#include <iamr_advection.H>
+#include <iamr_advection_utils.H>
 
 using namespace amrex;
 
 
 void
-Advection::ComputeFluxes ( Box const& bx,
-                           AMREX_D_DECL( Array4<Real> const& fx,
-                                         Array4<Real> const& fy,
-                                         Array4<Real> const& fz),
-                           AMREX_D_DECL( Array4<Real const> const& umac,
-                                         Array4<Real const> const& vmac,
-                                         Array4<Real const> const& wmac),
-                           AMREX_D_DECL( Array4<Real const> const& xed,
-                                         Array4<Real const> const& yed,
-                                         Array4<Real const> const& zed),
-                           Geometry const& geom, const int ncomp )
+AdvectionUtils::ComputeFluxes ( Box const& bx,
+                                AMREX_D_DECL( Array4<Real> const& fx,
+                                              Array4<Real> const& fy,
+                                              Array4<Real> const& fz),
+                                AMREX_D_DECL( Array4<Real const> const& umac,
+                                              Array4<Real const> const& vmac,
+                                              Array4<Real const> const& wmac),
+                                AMREX_D_DECL( Array4<Real const> const& xed,
+                                              Array4<Real const> const& yed,
+                                              Array4<Real const> const& zed),
+                                Geometry const& geom, const int ncomp )
 {
 
     const auto dx = geom.CellSizeArray();
@@ -70,19 +70,19 @@ Advection::ComputeFluxes ( Box const& bx,
 
 
 void
-Advection::ComputeDivergence ( Box const& bx,
-                             Array4<Real> const& div,
-                             AMREX_D_DECL( Array4<Real const> const& fx,
-                                           Array4<Real const> const& fy,
-                                           Array4<Real const> const& fz),
-                             AMREX_D_DECL( Array4<Real const> const& xed,
-                                           Array4<Real const> const& yed,
-                                           Array4<Real const> const& zed),
-                             AMREX_D_DECL( Array4<Real const> const& umac,
-                                           Array4<Real const> const& vmac,
-                                           Array4<Real const> const& wmac),
-                             const int ncomp, Geometry const& geom,
-                             int const* iconserv )
+AdvectionUtils::ComputeDivergence ( Box const& bx,
+                                    Array4<Real> const& div,
+                                    AMREX_D_DECL( Array4<Real const> const& fx,
+                                                  Array4<Real const> const& fy,
+                                                  Array4<Real const> const& fz),
+                                    AMREX_D_DECL( Array4<Real const> const& xed,
+                                                  Array4<Real const> const& yed,
+                                                  Array4<Real const> const& zed),
+                                    AMREX_D_DECL( Array4<Real const> const& umac,
+                                                  Array4<Real const> const& vmac,
+                                                  Array4<Real const> const& wmac),
+                                    const int ncomp, Geometry const& geom,
+                                    int const* iconserv )
 {
 
     const auto dxinv = geom.InvCellSizeArray();
@@ -125,12 +125,12 @@ Advection::ComputeDivergence ( Box const& bx,
 
 
 void
-Advection::ComputeSyncDivergence ( Box const& bx,
-                                   Array4<Real> const& div,
-                                   AMREX_D_DECL( Array4<Real const> const& fx,
-                                                 Array4<Real const> const& fy,
-                                                 Array4<Real const> const& fz),
-                                   const int ncomp, Geometry const& geom )
+AdvectionUtils::ComputeSyncDivergence ( Box const& bx,
+                                        Array4<Real> const& div,
+                                        AMREX_D_DECL( Array4<Real const> const& fx,
+                                                      Array4<Real const> const& fy,
+                                                      Array4<Real const> const& fz),
+                                        const int ncomp, Geometry const& geom )
 {
 
     const auto dxinv = geom.InvCellSizeArray();
@@ -163,13 +163,13 @@ Advection::ComputeSyncDivergence ( Box const& bx,
 #ifdef AMREX_USE_EB
 
 void
-Advection::EB_ComputeDivergence ( Box const& bx,
-                                  Array4<Real> const& div,
-                                  AMREX_D_DECL( Array4<Real const> const& fx,
-                                                Array4<Real const> const& fy,
-                                                Array4<Real const> const& fz),
-                                  Array4<Real const> const& vfrac,
-                                  const int ncomp, Geometry const& geom )
+AdvectionUtils::EB_ComputeDivergence ( Box const& bx,
+                                       Array4<Real> const& div,
+                                       AMREX_D_DECL( Array4<Real const> const& fx,
+                                                     Array4<Real const> const& fy,
+                                                     Array4<Real const> const& fz),
+                                       Array4<Real const> const& vfrac,
+                                       const int ncomp, Geometry const& geom )
 {
 
     const auto dxinv = geom.InvCellSizeArray();
@@ -206,21 +206,21 @@ Advection::EB_ComputeDivergence ( Box const& bx,
 
 
 void
-Advection::EB_ComputeFluxes ( Box const& bx,
-                              AMREX_D_DECL( Array4<Real> const& fx,
-                                            Array4<Real> const& fy,
-                                            Array4<Real> const& fz),
-                              AMREX_D_DECL( Array4<Real const> const& umac,
-                                            Array4<Real const> const& vmac,
-                                            Array4<Real const> const& wmac),
-                              AMREX_D_DECL( Array4<Real const> const& xed,
-                                            Array4<Real const> const& yed,
-                                            Array4<Real const> const& zed),
-                              AMREX_D_DECL( Array4<Real const> const& apx,
-                                            Array4<Real const> const& apy,
-                                            Array4<Real const> const& apz),
-                              Geometry const& geom, const int ncomp,
-                              Array4<EBCellFlag const> const& flag)
+AdvectionUtils::EB_ComputeFluxes ( Box const& bx,
+                                   AMREX_D_DECL( Array4<Real> const& fx,
+                                                 Array4<Real> const& fy,
+                                                 Array4<Real> const& fz),
+                                   AMREX_D_DECL( Array4<Real const> const& umac,
+                                                 Array4<Real const> const& vmac,
+                                                 Array4<Real const> const& wmac),
+                                   AMREX_D_DECL( Array4<Real const> const& xed,
+                                                 Array4<Real const> const& yed,
+                                                 Array4<Real const> const& zed),
+                                   AMREX_D_DECL( Array4<Real const> const& apx,
+                                                 Array4<Real const> const& apy,
+                                                 Array4<Real const> const& apz),
+                                   Geometry const& geom, const int ncomp,
+                                   Array4<EBCellFlag const> const& flag)
 {
 
     const auto dx = geom.CellSizeArray();
