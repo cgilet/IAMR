@@ -834,11 +834,12 @@ NavierStokes::scalar_advection (Real dt,
                         else
 #ifdef AMREX_USE_EB
                         {
-                            amrex::Abort("EB Godunov only supports conservative scalar update: run with ns.do_cons_trac=1");
+			    // If EB, we should have already aborted during initialization
+                            amrex::Abort("NS::scalar_advection(): EB Godunov only supports conservative scalar update: run with ns.do_cons_trac=1");
                         }
 #else
-                        {
-                            auto const& rho = Smf.const_array(S_mfi); //It should be equivalent to rho_ptime.const_array(U_mfi);
+			{
+			    auto const& rho = Smf.const_array(S_mfi); //Previous time, nghost_state() grow cells filled. It's always true that nghost_state > nghost_force.
 
                             amrex::ParallelFor(force_bx, [tf, visc, rho]
                             AMREX_GPU_DEVICE (int i, int j, int k) noexcept

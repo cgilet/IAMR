@@ -521,35 +521,48 @@ NavierStokesBase::Initialize ()
 #endif
 
 
-
     //
     // Get checkpoint info
     //
     pp.query("gradp_in_checkpoint", gradp_in_checkpoint);
     pp.query("avg_in_checkpoint",   average_in_checkpoint);
 
+    //
+    // Get godunov options
+    //
     pp.query("use_godunov", use_godunov);
+    ParmParse pp2("godunov");
+    pp2.query("use_ppm",             godunov_use_ppm);
+    pp2.query("use_forces_in_trans", godunov_use_forces_in_trans);
 
-    // Redistribution
 #ifdef AMREX_USE_EB
+    //
+    // EB Godunov restrictions
+    //
+    if ( use_godunov && !do_mom_diff )
+      amrex::Abort("EB Godunov only supports conservative velocity update: run with ns.do_mom_diff=1");
+    if ( use_godunov && !do_cons_trac )
+      amrex::Abort("EB Godunov only supports conservative scalar update: run with ns.do_cons_trac=1");
+    if ( use_godunov && !do_cons_trac2 )
+      amrex::Abort("EB Godunov only supports conservative scalar update: run with ns.do_cons_trac2=1");
+    if ( use_godunov && do_temp )
+      amrex::Abort("EB Godunov only supports conservative scalar update, and thus cannot run with a temperature field. Set ns.do_temp=0");
+    if ( use_godunov && godunov_use_ppm )
+      amrex::Abort("PPM not implemented within EB Godunov. Set godunov.use_ppm=0.");
+    if ( use_godunov && godunov_use_forces_in_trans )
+      amrex::Abort("use_forces_in_trans not implemented within EB Godunov. Set godunov.use_forces_in_trans=0.");
+
+    //
+    // Redistribution
+    //
     pp.query("redistribution_type", redistribution_type);
     if (redistribution_type != "NoRedist" &&
         redistribution_type != "FluxRedist" &&
         // m_redistribution_type != "MergeRedist" &&  // Not supported for now
         redistribution_type != "StateRedist")
         // amrex::Abort("redistribution type must be NoRedist, FluxRedist, MergeRedist, or StateRedist");
-        amrex::Abort("redistribution type must be Noredist, FluxRedist, or StateRedist");
+        amrex::Abort("redistribution type must be NoRedist, FluxRedist, or StateRedist");
 #endif
-
-    //
-    // Get godunov options
-    //
-#ifndef AMREX_USE_EB
-    ParmParse pp2("godunov");
-    pp2.query("use_ppm",             godunov_use_ppm);
-    pp2.query("use_forces_in_trans", godunov_use_forces_in_trans);
-#endif
-
 
 
     amrex::ExecOnFinalize(NavierStokesBase::Finalize);
@@ -3359,9 +3372,9 @@ NavierStokesBase::velocity_advection (Real dt)
         for (int i = 0; i < AMREX_SPACEDIM; i++)
         {
             const BoxArray& ba = getEdgeBoxArray(i);
-            cfluxes[i].define(ba, dmap, AMREX_SPACEDIM, nghost, MFInfo(), Umf.Factory());
+            cfluxes[i].define(ba, dmap, AMREX_SPACEDIM, nghost, MFInfo(), Factory());
             cfluxes[i].setVal(0.0);
-            edgestate[i].define(ba, dmap, AMREX_SPACEDIM, nghost, MFInfo(), Umf.Factory());
+            edgestate[i].define(ba, dmap, AMREX_SPACEDIM, nghost, MFInfo(), Factory());
         }
 
 
@@ -3370,16 +3383,18 @@ NavierStokesBase::velocity_advection (Real dt)
             //
             // >>>>>>>>>>>>>>>>>>>>>>>>>>>  GODUNOV ALGORITHM <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             //
-            FillPatchIterator Rho_fpi(*this,visc_terms,nghost_state(),prev_time,State_Type,Density,1);
-            FillPatchIterator S_fpi(*this,visc_terms,nghost_state(),prev_time,State_Type,Density,NUM_SCALARS);
-            MultiFab& Rmf=Rho_fpi.get_mf();
+            FillPatchIterator S_fpi(*this,visc_terms,nghost_force(),prev_time,State_Type,Density,NUM_SCALARS);
             MultiFab& Smf=S_fpi.get_mf();
 
-            int ngrow = 1;
+	    // Fixme? this only gets used if do_mom_diff
+            FillPatchIterator Rho_fpi(*this,visc_terms,nghost_state(),prev_time,State_Type,Density,1);
+            MultiFab& Rmf=Rho_fpi.get_mf();
 
             MultiFab forcing_term( grids, dmap, AMREX_SPACEDIM, nghost_force() );
-            // fixme - sterm would be better as a pointer
-            MultiFab S_term( grids, dmap, AMREX_SPACEDIM, nghost_state(), MFInfo(), Umf.Factory());
+            MultiFab* S_term;
+	    S_term = (do_mom_diff)
+	      ? new MultiFab( grids, dmap, AMREX_SPACEDIM, nghost_state(), MFInfo(), Factory())
+	      : &Umf;
 
             //
             // Compute viscosity components.
@@ -3418,19 +3433,18 @@ NavierStokesBase::velocity_advection (Real dt)
                     auto const& tf   = forcing_term.array(U_mfi,Xvel);
                     auto const& visc = visc_terms.const_array(U_mfi,Xvel);
                     auto const& gp   = Gp.const_array(U_mfi);
-                    auto const& rho  = Smf.const_array(U_mfi); //It should be equivalent to rho_ptime.const_array(U_mfi);
 
                     if ( do_mom_diff )
                     {
-                        amrex::ParallelFor(force_bx, AMREX_SPACEDIM, [ tf, visc, gp, rho]
+                        amrex::ParallelFor(force_bx, AMREX_SPACEDIM, [ tf, visc, gp]
                         AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
                         {
                             tf(i,j,k,n) = ( tf(i,j,k,n) + visc(i,j,k,n) - gp(i,j,k,n) );
                         });
 
-                        auto const& dens = Rmf.const_array(U_mfi);
+                        auto const& dens = Rmf.const_array(U_mfi); //Previous time, nghost_state() grow cells filled
                         auto const& vel  = Umf.const_array(U_mfi);
-                        auto const& st   = S_term.array(U_mfi);
+                        auto const& st   = S_term->array(U_mfi);
 
                         amrex::ParallelFor(state_bx, AMREX_SPACEDIM, [ dens, vel, st ]
                         AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
@@ -3441,17 +3455,20 @@ NavierStokesBase::velocity_advection (Real dt)
                     else
 #ifdef AMREX_USE_EB
                     {
-                        amrex::Abort("EB Godunov only supports conservative velocity update: run with ns.do_mom_diff=1");
+		        // If EB, we should already aborted during initialization
+                        amrex::Abort("NSB::velocity_adveciton(): EB Godunov only supports conservative velocity update: run with ns.do_mom_diff=1");
                     }
 #else
-                    {
+		    {
+
+
+		        auto const& rho  = Smf.const_array(U_mfi); //Previous time, nghost_force() grow cells filled
+
                         amrex::ParallelFor(force_bx, AMREX_SPACEDIM, [ tf, visc, gp, rho]
                         AMREX_GPU_DEVICE (int i, int j, int k, int n) noexcept
                         {
                             tf(i,j,k,n) = ( tf(i,j,k,n) + visc(i,j,k,n) - gp(i,j,k,n) ) / rho(i,j,k);
                         });
-
-                        S_term[U_mfi].copy<RunOn::Gpu>(Umf[U_mfi],state_bx,0,state_bx,0,AMREX_SPACEDIM);
                     }
 #endif
                 }
@@ -3467,7 +3484,7 @@ NavierStokesBase::velocity_advection (Real dt)
 
 #ifndef AMREX_USE_EB
             Godunov::ComputeAofs(*aofs, Xvel, AMREX_SPACEDIM,
-                                 S_term, 0,
+                                 *S_term, 0,
                                  AMREX_D_DECL(u_mac[0],u_mac[1],u_mac[2]),
                                  AMREX_D_DECL(edgestate[0],edgestate[1],edgestate[2]), 0, false,
                                  AMREX_D_DECL(cfluxes[0],cfluxes[1],cfluxes[2]), 0,
@@ -3475,7 +3492,7 @@ NavierStokesBase::velocity_advection (Real dt)
                                  godunov_use_ppm, godunov_use_forces_in_trans, true);
 #else
             EBGodunov::ComputeAofs(*aofs, Xvel, AMREX_SPACEDIM,
-                                   S_term, 0,
+                                   *S_term, 0,
                                    AMREX_D_DECL(u_mac[0],u_mac[1],u_mac[2]),
                                    AMREX_D_DECL(edgestate[0],edgestate[1],edgestate[2]), 0, false,
                                    AMREX_D_DECL(cfluxes[0],cfluxes[1],cfluxes[2]), 0,
@@ -3484,6 +3501,8 @@ NavierStokesBase::velocity_advection (Real dt)
                                    geom, iconserv, dt, true, redistribution_type);
 #endif
 
+	    if (do_mom_diff)
+	      delete S_term;
         }
         else
         {
@@ -4695,12 +4714,14 @@ NavierStokesBase::nghost_state ()
 int
 NavierStokesBase::nghost_force ()
 {
+    const auto& ebfactory = dynamic_cast<amrex::EBFArrayBoxFactory const&>(Factory());
+
     if (!use_godunov)
         return 0;
 #ifdef AMREX_USE_EB
     else if (redistribution_type == "StateRedist")
         return 4;
-    else
+    else if (!ebfactory.isAllRegular())
         return 3;
 #endif
     else
