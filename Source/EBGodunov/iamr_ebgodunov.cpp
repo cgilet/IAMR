@@ -53,6 +53,8 @@ EBGodunov::ComputeAofs ( MultiFab& aofs, const int aofs_comp, const int ncomp,
         const Box& bx   = mfi.tilebox();
 
         auto const& flagfab = ebfact.getMultiEBCellFlagFab()[mfi];
+	// FIXME? If state redistribution can alter cell-centered values up to 3
+	// ghost cells away, then should this halo be 3?
         bool regular = (flagfab.getType(amrex::grow(bx,2)) == FabType::regular);
 
         // Get handlers to Array4
