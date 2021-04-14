@@ -3367,8 +3367,18 @@ NavierStokesBase::velocity_advection (Real dt)
         MultiFab cfluxes[AMREX_SPACEDIM];
         MultiFab edgestate[AMREX_SPACEDIM];
 
-
-        int nghost = nghost_state()-1;
+	//FIMXE
+	// At most could have nghost= nghost_state()-2 due to needs of slopes routines
+	// Non-EB does not need any ghost cells (verified in development).
+	// Not sure that EB really needs any ghost cells on fluxes either (however,
+	// nghost =0 in development causes regression test to fail).
+	// PeleLM needs fluxes for scalar advection (not velocity advection)
+	// but has it's own scalar advection routine and does not use NS::scalar_advection()
+#ifdef AMREX_USE_EB
+        int nghost = nghost_state()-2;
+#else
+	int nghost = 0;
+#endif
         for (int i = 0; i < AMREX_SPACEDIM; i++)
         {
             const BoxArray& ba = getEdgeBoxArray(i);
@@ -3519,11 +3529,6 @@ NavierStokesBase::velocity_advection (Real dt)
                              , redistribution_type
 #endif
                              );
-
-#ifdef AMREX_USE_EB
-            // don't think this is needed here any more. Godunov sets covered vals now...
-            EB_set_covered(*aofs, 0.);
-#endif
         }
 
 
@@ -4664,7 +4669,7 @@ NavierStokesBase::predict_velocity (Real  dt)
 
       ParallelDescriptor::ReduceRealMax(run_time,IOProc);
 
-      Print() << "PeleLM::predict_velocity(): lev: " << level
+      Print() << "NavierStokesBase::predict_velocity(): lev: " << level
               << ", time: " << run_time << '\n';
    }
 
@@ -4698,30 +4703,60 @@ NavierStokesBase::floor(MultiFab& mf){
 int
 NavierStokesBase::nghost_state ()
 {
+  //FIXME - unsure of ghost cell needs here. Why is IAMR different than incflo?
+  // from incflo:
+//     int nghost_state () const {
+// #ifdef AMREX_USE_EB
+//         if (!EBFactory(0).isAllRegular())
+//         {
+//             return 4;
+//         }
+// #endif
+//         {
+//             return (m_advection_type != "MOL") ? 3 : 2;
+//         }
+//     }
+
 #ifdef AMREX_USE_EB
+  if (!EBFactory().isAllRegular())
+  {
     if (use_godunov && redistribution_type == "StateRedist")
         return 6;
-    else if (use_godunov && redistribution_type != "StateRedist")
-        return 5;
-    else if (!use_godunov && redistribution_type == "StateRedist")
+    else if (use_godunov || redistribution_type == "StateRedist")
         return 5;
     else
         return 4;
+  }
+  else
 #endif
+  {
     return (use_godunov) ? 3 : 2;
+  }
 }
+
 
 int
 NavierStokesBase::nghost_force ()
 {
-    const auto& ebfactory = dynamic_cast<amrex::EBFArrayBoxFactory const&>(Factory());
+  //FIXME? again, why is IAMR different than incflo?
+// From incflo
+// // For Godunov, we need 1 ghost cell in addition to the Box we are filling
+    // // For MOL    , we need 0 ghost cells
+    // int nghost_force () const
+    // {
+    //    if (m_advection_type == "MOL")
+    //        return 0;
+    //    else
+    //        return 1;
+    // }
 
     if (!use_godunov)
         return 0;
 #ifdef AMREX_USE_EB
-    else if (redistribution_type == "StateRedist")
+    else if ( !EBFactory().isAllRegular() )
+      if (redistribution_type == "StateRedist")
         return 4;
-    else if (!ebfactory.isAllRegular())
+      else
         return 3;
 #endif
     else
@@ -4756,8 +4791,9 @@ NavierStokesBase::InitialRedistribution ()
         if ( (flagfab.getType(amrex::grow(bx,1)) != FabType::covered) &&
              (flagfab.getType(amrex::grow(bx,1)) != FabType::regular) )
         {
+	    if (verbose)
+	      amrex::Print() << "Doing initial redistribution... " << std::endl;
 
-            amrex::Print() << "DOING THIS " << std::endl;
             Array4<Real const> AMREX_D_DECL(fcx, fcy, fcz), ccc, vfrac, AMREX_D_DECL(apx, apy, apz);
 
             AMREX_D_TERM(fcx = fact.getFaceCent()[0]->const_array(mfi);,
