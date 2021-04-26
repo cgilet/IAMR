@@ -3361,8 +3361,7 @@ NavierStokesBase::velocity_advection (Real dt)
         //
         //
         //
-        int nghost = 0;  // No ghost cells needed for fluxes here. Only needed for
-	// redistribution in EB algorithm.
+        int nghost = 2;  // Do we need 2???
         for (int i = 0; i < AMREX_SPACEDIM; i++)
         {
             const BoxArray& ba = getEdgeBoxArray(i);
