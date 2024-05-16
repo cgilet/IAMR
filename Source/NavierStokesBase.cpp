@@ -1384,7 +1384,7 @@ NavierStokesBase::estTimeStep ()
     //
     // Find local max of velocity
     //
-    u_max = S_new.norm0({AMREX_D_DECL(0,1,2)},0,true,true);
+    u_max = S_new.norm0({AMREX_D_DECL(0,1,2)},0,false,true);
 
     //
     // Compute forcing terms: in this case this means external forces and grad(p)
@@ -1426,7 +1426,7 @@ NavierStokesBase::estTimeStep ()
     //
     // Find local max of tforces
     //
-    f_max = tforces.norm0({AMREX_D_DECL(0,1,2)},0,true,true);
+    f_max = tforces.norm0({AMREX_D_DECL(0,1,2)},0,false,true);
 
     //
     // Compute local estdt
